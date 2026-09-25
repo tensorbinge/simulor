@@ -287,7 +287,6 @@ class EventBus:
 
         Args:
             data_qsize (int): Maximum size of the data event queue. Defaults to 4096.
-            system_qsize (int): Maximum size of the system event queue. Defaults to 64.
         """
 
         # Data: Flow Control (Block when full)
@@ -325,7 +324,7 @@ class EventBus:
                 self._data_queue.put(event, block=(backpressure == "block"))
             elif isinstance(event, SystemEvent):
                 # Critical events always go through
-                self._system_queue.put(event)
+                self._system_queue.put(event, block=False)
             else:
                 logger.warning("Unknown event type: %s", type(event))
                 return False
