@@ -124,8 +124,6 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 module = [
   "plotly.*",
-  "polars.*",
-  "pyarrow.*",
   "longport.*",
 ]
 

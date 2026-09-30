@@ -16,8 +16,6 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-import plotly
-
 if TYPE_CHECKING:
     from simulor.analytics.result import BacktestResult
 
@@ -132,6 +130,8 @@ class Tearsheet:
 
     def _embed_charts(self) -> str:
         """Embed interactive Plotly charts."""
+        import plotly
+
         charts_html = '<div class="charts-section">\n'
 
         # Equity curve
@@ -411,6 +411,8 @@ class Tearsheet:
         if include_plotlyjs == "cdn":
             html_parts.append('<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>')
         elif include_plotlyjs == "inline":
+            import plotly
+
             plotly_js = plotly.offline.get_plotlyjs()
             html_parts.append(f"<script>{plotly_js}</script>")
 

@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import sys
 from datetime import datetime
 from decimal import Decimal
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "src"))
 
 from simulor.core.events import EventBus, MarketEvent
 from simulor.data.providers.csv import CSVDataProvider
@@ -100,7 +104,7 @@ def test_future_asset_type_still_not_supported() -> None:
         )
 
 
-def test_csv_provider_parses_occ_option_symbol(tmp_path) -> None:
+def test_csv_provider_parses_occ_option_symbol(tmp_path: Path) -> None:
     csv_path = tmp_path / "options.csv"
     csv_path.write_text(
         "timestamp,symbol,open,high,low,close,volume\n"
@@ -118,7 +122,7 @@ def test_csv_provider_parses_occ_option_symbol(tmp_path) -> None:
     assert instrument.contract_size == Decimal("100")
 
 
-def test_csv_provider_explicit_option_type_overrides_inferred(tmp_path) -> None:
+def test_csv_provider_explicit_option_type_overrides_inferred(tmp_path: Path) -> None:
     csv_path = tmp_path / "override.csv"
     csv_path.write_text(
         "timestamp,symbol,instrument_type,open,high,low,close,volume\n"

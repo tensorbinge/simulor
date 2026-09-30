@@ -37,109 +37,132 @@ Quick Start:
     >>> results = engine.run(start='2020-01-01', end='2023-12-31', mode='backtest')
 """
 
+from __future__ import annotations
+
 __version__ = "0.2.0b1"
 __author__ = "Simulor Contributors"
 
-import simulor.logging
+from importlib import import_module
+from typing import TYPE_CHECKING, Any
 
-# Capital allocation (multi-strategy)
 from simulor.allocation import WeightBasedAllocationModel
-
-# Alpha models and signals
 from simulor.alpha import MovingAverageCrossover, Signal, SignalType
-
-# Analytics and results
 from simulor.analytics import BacktestResult, StrategyMetrics, Tearsheet
-
-# Events (for custom components)
 from simulor.core.events import MarketEvent
-
-# Protocols (for custom implementations)
-from simulor.core.models import (
+from simulor.data import CsvFeed, MarketStore
+from simulor.engine import Engine
+from simulor.execution import Immediate, SimulatedBroker
+from simulor.models import (
+    AllocationModel,
     AlphaModel,
     ExecutionModel,
     PortfolioConstructionModel,
     RiskModel,
     UniverseSelectionModel,
 )
-from simulor.data import MarketStore
-from simulor.data.csv_feed import CsvFeed
-
-# Core engine and orchestration
-from simulor.engine import Engine
-
-# Execution models and orders
-from simulor.execution import Fill, Immediate, OrderSpec, OrderType
-from simulor.execution.simulation.broker import SimulatedBroker
-
-# Portfolio management
 from simulor.portfolio import EqualWeight, Fund, Portfolio, Position
-
-# Risk management
 from simulor.risk import PositionLimit
-
-# Strategy composition
 from simulor.strategy import Strategy
-
-# Data structures and providers
 from simulor.types import (
     AssetType,
+    ColumnName,
+    Fill,
     Instrument,
     MarketData,
+    OptionType,
+    OrderSide,
+    OrderSpec,
+    OrderType,
+    QuoteBar,
+    QuoteTick,
     Resolution,
+    TickDirection,
+    TimeInForce,
     TradeBar,
     TradeTick,
 )
-
-# Universe selection
 from simulor.universe import Static
+
+if TYPE_CHECKING:
+    from simulor.execution.live.connectors import LongbridgeConnector
+    from simulor.execution.live.longbridge import Longbridge
 
 __all__ = [
     "__version__",
-    # === Core Engine & Orchestration ===
+    "__author__",
+    # Core Engine & Orchestration
     "Engine",
-    # === Strategy Framework ===
+    # Strategy Framework
     "Strategy",
-    # === Portfolio Management ===
+    # Portfolio Management
     "Fund",
     "Portfolio",
     "Position",
     "EqualWeight",
-    # === Alpha Generation ===
+    # Alpha Generation
     "AlphaModel",
     "MovingAverageCrossover",
     "Signal",
     "SignalType",
-    # === Risk Management ===
+    # Risk Management
     "RiskModel",
     "PositionLimit",
-    # === Execution ===
+    # Execution
     "ExecutionModel",
     "Immediate",
     "SimulatedBroker",
     "OrderSpec",
     "OrderType",
+    "OrderSide",
+    "TimeInForce",
     "Fill",
-    # === Universe Selection ===
+    # Universe Selection
     "UniverseSelectionModel",
     "Static",
-    # === Capital Allocation ===
+    # Capital Allocation
+    "AllocationModel",
     "WeightBasedAllocationModel",
-    # === Data Providers & Structures ===
+    # Data Providers & Structures
     "CsvFeed",
     "MarketStore",
     "Instrument",
     "MarketData",
     "TradeBar",
     "TradeTick",
+    "QuoteBar",
+    "QuoteTick",
     "Resolution",
     "AssetType",
-    # === Events (for custom components) ===
+    "OptionType",
+    "TickDirection",
+    "ColumnName",
+    # Events (for custom components)
     "MarketEvent",
-    # === Protocols (for custom implementations) ===
+    # Protocols (for custom implementations)
     "PortfolioConstructionModel",
-    # === Analytics & Results ===
+    # Analytics & Results
     "BacktestResult",
     "StrategyMetrics",
     "Tearsheet",
 ]
+
+_OPTIONAL_EXPORTS = {
+    "Longbridge": ("simulor.live", "Longbridge"),
+    "LongbridgeConnector": ("simulor.live", "LongbridgeConnector"),
+}
+
+
+def __getattr__(name: str) -> Any:
+    try:
+        module_name, attr_name = _OPTIONAL_EXPORTS[name]
+    except KeyError as exc:
+        raise AttributeError(f"module 'simulor' has no attribute {name!r}") from exc
+
+    module = import_module(module_name)
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(list(globals().keys()) + __all__)
