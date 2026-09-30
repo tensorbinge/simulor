@@ -57,7 +57,7 @@ jupyter = [
   "matplotlib>=3.7.0",
 ]
 longport = [
-  "longport>=3.0.20",
+  "longport>=4.3.7",
 ]
 
 [project.urls]
@@ -124,8 +124,6 @@ warn_unused_ignores = true
 ignore_missing_imports = true
 module = [
   "plotly.*",
-  "polars.*",
-  "pyarrow.*",
   "longport.*",
 ]
 

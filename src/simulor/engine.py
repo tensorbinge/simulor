@@ -13,10 +13,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from zoneinfo import ZoneInfo
 
-from simulor.analytics import BacktestResult
 from simulor.core.connectors import Broker
 from simulor.core.events import DataEvent, EndOfStreamEvent, EventBus, MarketEvent, SystemEvent
 from simulor.core.models import Context, Feed
@@ -25,6 +24,9 @@ from simulor.execution.simulation.broker import SimulatedBroker
 from simulor.logging import get_logger
 from simulor.portfolio import Fund, Portfolio
 from simulor.strategy import Strategy
+
+if TYPE_CHECKING:
+    from simulor.analytics import BacktestResult
 
 __all__ = ["Engine"]
 
@@ -507,6 +509,8 @@ class Engine:
             # Fallback to current timestamp if no snapshots
             actual_start = self._current_timestamp or datetime.now()
             actual_end = self._current_timestamp or datetime.now()
+
+        from simulor.analytics import BacktestResult
 
         # Create BacktestResult (metrics computed in __post_init__)
         return BacktestResult(

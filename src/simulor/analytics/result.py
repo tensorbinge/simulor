@@ -20,8 +20,6 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-import plotly.graph_objects as go
-
 from simulor.analytics import metrics as calc
 from simulor.analytics.returns import (
     calculate_cagr,
@@ -31,6 +29,8 @@ from simulor.analytics.returns import (
 )
 
 if TYPE_CHECKING:
+    import plotly.graph_objects as go
+
     from simulor.portfolio.recorder import TimeSeriesRecorder
     from simulor.types import Fill
 

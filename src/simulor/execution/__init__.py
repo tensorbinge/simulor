@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from simulor.execution.models import Immediate
+from simulor.execution.simulation.broker import SimulatedBroker
 from simulor.execution.simulation.cost_models import (
     CostComponent,
     CostModel,
@@ -20,6 +21,7 @@ __all__ = [
     "Fill",
     # Execution models
     "Immediate",
+    "SimulatedBroker",
     # Fill models
     "FillModel",
     "InstantFillModel",
