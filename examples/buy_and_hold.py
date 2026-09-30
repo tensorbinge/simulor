@@ -12,7 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from simulor.alpha.signal import Signal, SignalType
+from simulor.alpha.signal import Signal, SignalDirection, SignalType
 from simulor.analytics import Tearsheet
 from simulor.core.events import MarketEvent
 from simulor.core.models import AlphaModel
@@ -23,7 +23,7 @@ from simulor.execution.simulation.broker import SimulatedBroker
 from simulor.portfolio import EqualWeight, Fund
 from simulor.risk import PositionLimit
 from simulor.strategy import Strategy
-from simulor.types import Instrument, Resolution
+from simulor.types import Instrument, Resolution, Target
 from simulor.universe import Static
 
 
@@ -34,27 +34,28 @@ class BuyAndHoldAlphaModel(AlphaModel):
     then holds the positions indefinitely.
     """
 
-    def generate_signals(self, market_event: MarketEvent) -> dict[Instrument, Signal]:
+    def generate_signals(self, market_event: MarketEvent) -> list[Signal]:
         """Generate buy signal only on first occurrence of each instrument.
 
         Args:
             market_event: Current market data event
         Returns:
-            Dictionary mapping instruments to signals
+            List with one buy signal per instrument in the event
         """
 
         # Always generate buy signals
-        return {
-            instrument: Signal(
+        return [
+            Signal(
                 instrument=instrument,
                 timestamp=market_event.time,
+                direction=SignalDirection.LONG,
                 signal_type=SignalType.TECHNICAL_INDICATOR,
                 source_id=self.__class__.__name__,
                 strength=Decimal("1.0"),  # Maximum buy signal
                 confidence=Decimal("1.0"),  # High confidence
             )
             for instrument in market_event.instruments()
-        }
+        ]
 
 
 class BuyAndHoldPortfolioConstructionModel(EqualWeight):
@@ -69,14 +70,10 @@ class BuyAndHoldPortfolioConstructionModel(EqualWeight):
         super().__init__(*args, **kwargs)
         self._initialized_instruments: set[Instrument] = set()
 
-    def calculate_targets(self, signals: dict[Instrument, Signal]) -> dict[Instrument, Decimal]:
-        uninitialized_instruments = {
-            instrument for instrument in signals if instrument not in self._initialized_instruments
-        }
-        self._initialized_instruments.update(uninitialized_instruments)
-        return super().calculate_targets(
-            {instrument: signal for instrument, signal in signals.items() if instrument in uninitialized_instruments}
-        )
+    def create_targets(self, signals: list[Signal]) -> list[Target]:
+        uninitialized = [signal for signal in signals if signal.instrument not in self._initialized_instruments]
+        self._initialized_instruments.update(signal.instrument for signal in uninitialized)
+        return super().create_targets(uninitialized)
 
 
 def main() -> None:

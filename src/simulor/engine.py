@@ -390,9 +390,9 @@ class Engine:
 
         Pipeline flow:
         1. Universe -> List[Instrument]
-        2. Alpha -> Dict[Instrument, Signal]
-        3. Portfolio -> Dict[Instrument, Decimal] (target quantities)
-        4. Risk -> Dict[Instrument, Decimal] (constrained targets)
+        2. Alpha -> List[Signal]
+        3. Portfolio -> List[Target] (desired holdings)
+        4. Risk -> List[Target] (risk-adjusted targets)
         5. Execution -> List[OrderSpec]
 
         Then route orders to Broker for execution.
@@ -431,7 +431,6 @@ class Engine:
         market_store.update(filtered_event)
 
         # 2. Alpha: Generate signals
-        # FIXME: There may be multiple data points in same instrument (e.g. different resolutions), should not overwrite signals
         all_signals = strategy.alpha.generate_signals(filtered_event)
         logger.debug(
             "Strategy '%s': generated %d signals",
@@ -439,19 +438,19 @@ class Engine:
             len(all_signals),
         )
 
-        # 3. Portfolio construction: Calculate target positions
-        targets = strategy.construction.calculate_targets(all_signals)
+        # 3. Portfolio construction: Create desired holdings
+        targets = strategy.construction.create_targets(all_signals)
         logger.debug(
-            "Strategy '%s': calculated %d target positions",
+            "Strategy '%s': created %d targets",
             strategy.name,
             len(targets),
         )
 
-        # 4. Risk management: Apply constraints
-        constrained_targets = strategy.risk.apply_limits(targets)
+        # 4. Risk management: Adjust desired holdings
+        constrained_targets = strategy.risk.adjust_targets(targets)
         if len(constrained_targets) != len(targets):
             logger.debug(
-                "Strategy '%s': risk management reduced targets from %d to %d",
+                "Strategy '%s': risk management changed targets from %d to %d",
                 strategy.name,
                 len(targets),
                 len(constrained_targets),

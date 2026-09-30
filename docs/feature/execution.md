@@ -81,7 +81,7 @@ The execution layer handles:
 ┌─────────────────────────────────────────────────────────────────┐
 │                        Risk Model                               │
 │  ┌────────────────────────────────────────────────────────┐     │
-│  │  constrained_targets: Dict[Instrument, Decimal]        │     │
+│  │  constrained_targets: List[Target]                     │     │
 │  └────────────────────────────────────────────────────────┘     │
 └───────────────────────────┬─────────────────────────────────────┘
                             │ Constrained Targets
@@ -895,12 +895,15 @@ The execution engine provides API for ExecutionModel components to generate Orde
 class ExecutionModel:
     def generate_orders(
         self,
-        targets: Dict[str, float],      # Target positions from RiskModel
-        current: Dict[str, float],       # Current positions
-        market_data: MarketEvent     # Current market data
+        targets: List[Target],      # Targets from RiskModel
     ) -> List[OrderSpec]:
         """
-        Convert target positions into OrderSpec.
+        Convert targets into OrderSpec.
+
+        Targets are not guaranteed to be merged per instrument, so
+        normalizing the target stream into executable quantity
+        transitions is the responsibility of the execution model.
+        Current positions are read from the model context.
 
         Returns list of OrderSpec to achieve targets.
         """

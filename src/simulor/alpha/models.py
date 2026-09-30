@@ -3,18 +3,18 @@
 Provides built-in implementations of AlphaModel:
 - MovingAverageCrossover: Moving average crossover using market_store.trade_bars()
 
-All return Dict[Instrument, Signal] with proper strength/confidence scoring.
+All return List[Signal] with proper direction/strength/confidence scoring.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
 
-from simulor.alpha.signal import Signal, SignalType
+from simulor.alpha.signal import Signal, SignalDirection, SignalType
 from simulor.core.events import MarketEvent
 from simulor.core.models import AlphaModel
 from simulor.logging import get_logger
-from simulor.types import Instrument, Resolution
+from simulor.types import Resolution
 
 # Create module logger
 logger = get_logger(__name__)
@@ -47,18 +47,18 @@ class MovingAverageCrossover(AlphaModel):
         self.fast_period = fast_period
         self.slow_period = slow_period
 
-    def generate_signals(self, market_event: MarketEvent) -> dict[Instrument, Signal]:
+    def generate_signals(self, market_event: MarketEvent) -> list[Signal]:
         """Generate signals based on moving average crossover.
 
         Args:
-            data: Current market data event
+            market_event: Current market data event
 
         Returns:
-            Dictionary mapping instruments to signals
+            List with at most one signal per instrument in the event.
         """
-        signals: dict[Instrument, Signal] = {}
+        signals: list[Signal] = []
 
-        for instrument in market_event.quote_bars:
+        for instrument in market_event.instruments():
             # Get historical bars for the instrument
             trade_bars = self.market_store.get_trade_bars(instrument, Resolution.DAILY)
 
@@ -81,29 +81,38 @@ class MovingAverageCrossover(AlphaModel):
             # Normalize by slow MA to get percentage difference
             separation = (fast_ma - slow_ma) / slow_ma
 
-            # Cap strength at [-1, 1] using linear clipping
-            # Scale separation by 10; values beyond [-1, 1] are clipped to limits
+            # Direction comes from the sign of the crossover, while strength
+            # carries the magnitude. Scale separation by 10 and clip at 1.
             raw_strength = separation * 10
-            strength = max(Decimal("-1.0"), min(Decimal("1.0"), raw_strength))
+            if raw_strength > 0:
+                direction = SignalDirection.LONG
+            elif raw_strength < 0:
+                direction = SignalDirection.SHORT
+            else:
+                direction = SignalDirection.FLAT
+            strength = min(abs(raw_strength), Decimal("1.0"))
 
             # Confidence based on how much data we have beyond minimum
             data_ratio = min(1.0, len(trade_bars) / (self.slow_period * 2))
             confidence = Decimal(str(data_ratio * 0.7))  # Max 0.7 for technical signals
 
-            signals[instrument] = Signal(
-                instrument=instrument,
-                timestamp=market_event.time,
-                signal_type=SignalType.TECHNICAL_INDICATOR,
-                source_id="MovingAverageCrossover",
-                strength=strength,
-                confidence=confidence,
-                metadata={
-                    "fast_period": self.fast_period,
-                    "slow_period": self.slow_period,
-                    "fast_ma": fast_ma,
-                    "slow_ma": slow_ma,
-                    "separation": separation,
-                },
+            signals.append(
+                Signal(
+                    instrument=instrument,
+                    timestamp=market_event.time,
+                    direction=direction,
+                    signal_type=SignalType.TECHNICAL_INDICATOR,
+                    source_id="MovingAverageCrossover",
+                    strength=strength,
+                    confidence=confidence,
+                    metadata={
+                        "fast_period": self.fast_period,
+                        "slow_period": self.slow_period,
+                        "fast_ma": fast_ma,
+                        "slow_ma": slow_ma,
+                        "separation": separation,
+                    },
+                )
             )
 
             logger.debug(
