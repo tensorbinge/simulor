@@ -16,11 +16,13 @@ with the current public API.
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from decimal import Decimal
 from math import sqrt
 from pathlib import Path
+from uuid import uuid4
 
-from simulor.alpha.signal import Signal, SignalType
+from simulor.alpha.signal import Signal, SignalDirection, SignalType
 from simulor.core.events import MarketEvent
 from simulor.core.models import AlphaModel, PortfolioConstructionModel, RiskModel
 from simulor.data.csv_feed import CsvFeed
@@ -29,7 +31,7 @@ from simulor.execution import Immediate
 from simulor.execution.simulation.broker import SimulatedBroker
 from simulor.portfolio import Fund
 from simulor.strategy import Strategy
-from simulor.types import Instrument, Resolution
+from simulor.types import Instrument, Resolution, Target, TargetKind, TargetSource
 from simulor.universe import Static
 
 logger = logging.getLogger(__name__)
@@ -60,14 +62,14 @@ class RegimeMomentumBreakoutAlpha(AlphaModel):
         self.volatility_window = volatility_window
         self.max_candidates = max_candidates
 
-    def generate_signals(self, market_event: MarketEvent) -> dict[Instrument, Signal]:
+    def generate_signals(self, market_event: MarketEvent) -> list[Signal]:
         instruments = sorted(market_event.instruments(), key=lambda instrument: instrument.symbol)
         if not instruments:
-            return {}
+            return []
 
         if not self._is_risk_on(instruments):
             logger.debug("Regime filter is risk-off at %s", market_event.time)
-            return {}
+            return []
 
         ranked: list[tuple[Instrument, Decimal, Decimal, Decimal, Decimal]] = []
 
@@ -99,11 +101,11 @@ class RegimeMomentumBreakoutAlpha(AlphaModel):
         ranked.sort(key=lambda item: item[1], reverse=True)
         leaders = ranked[: self.max_candidates]
         if not leaders:
-            return {}
+            return []
 
         best_score = leaders[0][1]
         scale = best_score if best_score > 0 else Decimal("1")
-        signals: dict[Instrument, Signal] = {}
+        signals: list[Signal] = []
 
         for instrument, score, momentum, breakout, annualized_volatility in leaders:
             normalized_strength = min(Decimal("1"), max(Decimal("0.1"), score / scale))
@@ -116,19 +118,22 @@ class RegimeMomentumBreakoutAlpha(AlphaModel):
                     + min(max(breakout, Decimal("0")), Decimal("0.10")),
                 ),
             )
-            signals[instrument] = Signal(
-                instrument=instrument,
-                timestamp=market_event.time,
-                signal_type=SignalType.TECHNICAL_INDICATOR,
-                source_id=self.__class__.__name__,
-                strength=normalized_strength,
-                confidence=confidence,
-                metadata={
-                    "momentum": momentum,
-                    "breakout": breakout,
-                    "annualized_volatility": annualized_volatility,
-                    "score": score,
-                },
+            signals.append(
+                Signal(
+                    instrument=instrument,
+                    timestamp=market_event.time,
+                    direction=SignalDirection.LONG,
+                    signal_type=SignalType.TECHNICAL_INDICATOR,
+                    source_id=self.__class__.__name__,
+                    strength=normalized_strength,
+                    confidence=confidence,
+                    metadata={
+                        "momentum": momentum,
+                        "breakout": breakout,
+                        "annualized_volatility": annualized_volatility,
+                        "score": score,
+                    },
+                )
             )
 
         return signals
@@ -180,17 +185,29 @@ class VolatilityScaledTopK(PortfolioConstructionModel):
         self.target_gross_exposure = target_gross_exposure
         self.max_positions = max_positions
 
-    def calculate_targets(self, signals: dict[Instrument, Signal]) -> dict[Instrument, Decimal]:
+    def create_targets(self, signals: list[Signal]) -> list[Target]:
         if not signals:
-            return {}
+            return []
 
-        ranked = sorted(
-            (signal for signal in signals.values() if signal.strength > 0),
+        # Rank long signals by conviction, keeping only the strongest view per
+        # instrument so that one instrument cannot occupy several slots.
+        ranked: list[Signal] = []
+        seen: set[Instrument] = set()
+
+        for signal in sorted(
+            (signal for signal in signals if signal.is_buy),
             key=lambda signal: signal.weighted_strength,
             reverse=True,
-        )[: self.max_positions]
+        ):
+            if signal.instrument in seen:
+                continue
+            seen.add(signal.instrument)
+            ranked.append(signal)
+            if len(ranked) == self.max_positions:
+                break
+
         if not ranked:
-            return {}
+            return []
 
         inverse_vols: dict[Instrument, Decimal] = {}
         for signal in ranked:
@@ -201,7 +218,7 @@ class VolatilityScaledTopK(PortfolioConstructionModel):
 
         total_inverse_vol = sum(inverse_vols.values())
         portfolio_value = self.portfolio.total_value
-        targets: dict[Instrument, Decimal] = {}
+        targets: list[Target] = []
 
         for signal in ranked:
             instrument = signal.instrument
@@ -211,7 +228,16 @@ class VolatilityScaledTopK(PortfolioConstructionModel):
 
             target_weight = (inverse_vols[instrument] / total_inverse_vol) * self.target_gross_exposure
             target_notional = portfolio_value * target_weight
-            targets[instrument] = target_notional // current_price
+
+            targets.append(
+                Target.quantity(
+                    instrument,
+                    signal.timestamp,
+                    target_notional // current_price,
+                    signal_id=signal.id,
+                    reason="inverse volatility allocation",
+                )
+            )
 
         return targets
 
@@ -223,32 +249,58 @@ class DrawdownCappedRisk(RiskModel):
         self.max_position_pct = max_position_pct
         self.max_drawdown = max_drawdown
 
-    def apply_limits(self, targets: dict[Instrument, Decimal]) -> dict[Instrument, Decimal]:
+    def adjust_targets(self, targets: list[Target]) -> list[Target]:
         if not targets:
-            return {}
+            return []
 
         if self._current_drawdown() >= self.max_drawdown:
             logger.warning("Drawdown limit breached, flattening portfolio targets")
-            return {}
+            return [
+                Target.flat(
+                    target.instrument,
+                    target.timestamp,
+                    source=TargetSource.RISK_ADJUSTMENT,
+                    parent_target_id=target.id,
+                    reason="drawdown limit breached",
+                )
+                for target in targets
+            ]
 
         total_value = self.portfolio.total_value
         if total_value <= 0:
-            return {}
+            return []
 
-        adjusted: dict[Instrument, Decimal] = {}
+        adjusted: list[Target] = []
         max_notional = total_value * self.max_position_pct
 
-        for instrument, target_quantity in targets.items():
-            current_price = self.market_store.get_latest_price(instrument)
+        for target in targets:
+            if target.kind is not TargetKind.QUANTITY:
+                # This model only caps share quantities; other units pass through
+                adjusted.append(target)
+                continue
+
+            current_price = self.market_store.get_latest_price(target.instrument)
             if current_price <= 0:
                 continue
 
-            capped_quantity = target_quantity
-            position_notional = abs(target_quantity * current_price)
-            if position_notional > max_notional:
-                capped_quantity = max_notional // current_price
+            position_notional = abs(target.value * current_price)
+            if position_notional <= max_notional:
+                adjusted.append(target)
+                continue
 
-            adjusted[instrument] = capped_quantity
+            capped_magnitude = max_notional // current_price
+            capped_quantity = capped_magnitude if target.value > 0 else -capped_magnitude
+
+            adjusted.append(
+                replace(
+                    target,
+                    id=uuid4(),
+                    value=capped_quantity,
+                    source=TargetSource.RISK_ADJUSTMENT,
+                    parent_target_id=target.id,
+                    reason=f"capped at {self.max_position_pct} of portfolio value",
+                )
+            )
 
         return adjusted
 
