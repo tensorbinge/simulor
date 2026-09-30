@@ -18,6 +18,21 @@ def test_root_module_imports_without_optional_dependencies() -> None:
     assert hasattr(simulor, "SimulatedBroker")
 
 
+def test_pipeline_artifacts_are_public() -> None:
+    simulor = importlib.import_module("simulor")
+    types = importlib.import_module("simulor.types")
+    alpha = importlib.import_module("simulor.alpha")
+
+    for name in ("Signal", "SignalDirection", "Target", "TargetKind", "TargetSource"):
+        assert name in simulor.__all__
+        assert hasattr(simulor, name)
+
+    assert types.Target is simulor.Target
+    assert types.TargetKind is simulor.TargetKind
+    assert types.TargetSource is simulor.TargetSource
+    assert alpha.SignalDirection is simulor.SignalDirection
+
+
 def test_public_subpackages_expose_canonical_symbols() -> None:
     simulor = importlib.import_module("simulor")
     models = importlib.import_module("simulor.models")
