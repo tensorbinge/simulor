@@ -46,7 +46,7 @@ from importlib import import_module
 from typing import TYPE_CHECKING, Any
 
 from simulor.allocation import WeightBasedAllocationModel
-from simulor.alpha import MovingAverageCrossover, Signal, SignalType
+from simulor.alpha import MovingAverageCrossover, Signal, SignalDirection, SignalType
 from simulor.analytics import BacktestResult, StrategyMetrics, Tearsheet
 from simulor.core.events import MarketEvent
 from simulor.data import CsvFeed, MarketStore
@@ -76,6 +76,9 @@ from simulor.types import (
     QuoteBar,
     QuoteTick,
     Resolution,
+    Target,
+    TargetKind,
+    TargetSource,
     TickDirection,
     TimeInForce,
     TradeBar,
@@ -103,7 +106,12 @@ __all__ = [
     "AlphaModel",
     "MovingAverageCrossover",
     "Signal",
+    "SignalDirection",
     "SignalType",
+    # Desired Holdings
+    "Target",
+    "TargetKind",
+    "TargetSource",
     # Risk Management
     "RiskModel",
     "PositionLimit",

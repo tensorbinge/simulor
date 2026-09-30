@@ -7,6 +7,7 @@ Types exported:
 - Instrument identification: Instrument, AssetType, OptionType
 - Market data: MarketData, TradeBar, TradeTick, QuoteBar, QuoteTick
 - Orders: OrderSide, TimeInForce
+- Targets: Target, TargetKind, TargetSource
 - Time: Resolution, ColumnName
 - Enums: TickDirection
 """
@@ -17,6 +18,7 @@ from simulor.types.common import AssetType, ColumnName, OptionType, OrderSide, R
 from simulor.types.instruments import Instrument
 from simulor.types.market_data import MarketData, QuoteBar, QuoteTick, TradeBar, TradeTick
 from simulor.types.orders import Fill, OrderSpec, OrderType
+from simulor.types.target import Target, TargetKind, TargetSource
 
 __all__ = [
     # Instruments
@@ -35,6 +37,10 @@ __all__ = [
     "OrderType",
     "OrderSpec",
     "Fill",
+    # Targets
+    "Target",
+    "TargetKind",
+    "TargetSource",
     # Time & Columns
     "Resolution",
     "ColumnName",

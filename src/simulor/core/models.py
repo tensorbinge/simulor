@@ -3,9 +3,9 @@
 Defines abstract base classes for all strategy components in the framework:
 - UniverseSelectionModel: Determine which instruments to trade
 - AlphaModel: Generate trading signals from market data
-- PortfolioConstructionModel: Calculate target positions from signals
-- RiskModel: Apply risk limits to position targets
-- ExecutionModel: Convert position targets into orders
+- PortfolioConstructionModel: Create desired holdings from signals
+- RiskModel: Adjust desired holdings to respect risk constraints
+- ExecutionModel: Convert desired holdings into orders
 """
 
 from __future__ import annotations
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from simulor.core.events import DataEvent, EventBus, MarketEvent
     from simulor.data.market_store import MarketStore
     from simulor.portfolio.manager import Portfolio
-    from simulor.types import Instrument, OrderSpec
+    from simulor.types import Instrument, OrderSpec, Target
 
 __all__ = [
     "Context",
@@ -197,7 +197,7 @@ class AlphaModel(Model, ABC):
     """Abstract base class for alpha signal generation.
 
     Alpha models analyze market data and generate trading signals
-    indicating direction (buy/sell) and strength.
+    indicating direction (long/short/flat), strength, and confidence.
 
     Components have access to:
     - self.market_store: Historical market data
@@ -205,15 +205,16 @@ class AlphaModel(Model, ABC):
     """
 
     @abstractmethod
-    def generate_signals(self, market_event: MarketEvent) -> dict[Instrument, Signal]:
+    def generate_signals(self, market_event: MarketEvent) -> list[Signal]:
         """Generate trading signals from market data.
 
         Args:
             market_event: Current market data event
         Returns:
-            Dictionary mapping instruments to signals.
-            Only return signals for instruments you want to trade.
-            Omit instruments with no signal.
+            List of signals. Only return signals for instruments you want to
+            trade and omit instruments with no view. Several signals may be
+            returned for the same instrument: the framework does not force
+            them to be merged before portfolio construction.
         """
         ...
 
@@ -221,8 +222,8 @@ class AlphaModel(Model, ABC):
 class PortfolioConstructionModel(Model, ABC):
     """Abstract base class for portfolio construction.
 
-    Portfolio construction models convert trading signals into target
-    positions, handling position sizing and portfolio weight allocation.
+    Portfolio construction models convert trading signals into desired
+    holdings, handling position sizing and portfolio weight allocation.
 
     Components have access to:
     - self.market_store: Historical market data
@@ -230,18 +231,17 @@ class PortfolioConstructionModel(Model, ABC):
     """
 
     @abstractmethod
-    def calculate_targets(
-        self,
-        signals: dict[Instrument, Signal],
-    ) -> dict[Instrument, Decimal]:
-        """Calculate target positions from signals.
+    def create_targets(self, signals: list[Signal]) -> list[Target]:
+        """Create desired holdings from trading signals.
 
         Args:
             signals: Trading signals from alpha models
 
         Returns:
-            Dictionary mapping instruments to target quantities.
-            Positive = long, negative = short, zero = flat.
+            List of targets describing the desired end-state portfolio.
+            Targets may be expressed as quantities, weights, notionals, or
+            flat instructions, and several targets may be returned for the
+            same instrument.
         """
         ...
 
@@ -249,8 +249,9 @@ class PortfolioConstructionModel(Model, ABC):
 class RiskModel(Model, ABC):
     """Abstract base class for risk management.
 
-    Risk models apply constraints and limits to position targets,
-    ensuring the strategy stays within defined risk parameters.
+    Risk models review desired holdings and keep them within defined risk
+    parameters, for example by suppressing an entry, reducing exposure,
+    flattening a position, or adding a hedge.
 
     Components have access to:
     - self.market_store: Historical market data
@@ -258,18 +259,16 @@ class RiskModel(Model, ABC):
     """
 
     @abstractmethod
-    def apply_limits(
-        self,
-        targets: dict[Instrument, Decimal],
-    ) -> dict[Instrument, Decimal]:
-        """Apply risk limits to position targets.
+    def adjust_targets(self, targets: list[Target]) -> list[Target]:
+        """Adjust desired holdings to respect risk constraints.
 
         Args:
-            targets: Target positions from portfolio construction
+            targets: Targets from portfolio construction
 
         Returns:
-            Adjusted target positions after applying risk limits.
-            Typically returns same or reduced positions.
+            Targets after risk review. Implementations may replace targets
+            with new ones, remove targets, or add new targets. Targets that
+            pass unchanged are typically returned as-is.
         """
         ...
 
@@ -277,8 +276,9 @@ class RiskModel(Model, ABC):
 class ExecutionModel(Model, ABC):
     """Abstract base class for order execution.
 
-    Execution models convert position targets into executable orders,
-    handling order types, timing, and other execution details.
+    Execution models convert desired holdings into executable orders,
+    handling target normalization, order types, timing, and other
+    execution details.
 
     Components have access to:
     - self.market_store: Historical market data
@@ -286,17 +286,17 @@ class ExecutionModel(Model, ABC):
     """
 
     @abstractmethod
-    def generate_orders(
-        self,
-        targets: dict[Instrument, Decimal],
-    ) -> list[OrderSpec]:
-        """Generate orders to reach target positions.
+    def generate_orders(self, targets: list[Target]) -> list[OrderSpec]:
+        """Generate orders that move the portfolio towards the targets.
 
         Args:
-            targets: Target positions after risk management
+            targets: Targets after risk management
 
         Returns:
-            List of order specifications to execute.
+            List of order specifications to execute. Implementations must
+            not assume that targets have already been merged per instrument:
+            normalizing the target stream into executable quantity
+            transitions is the responsibility of the execution model.
         """
         ...
 

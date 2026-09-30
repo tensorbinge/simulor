@@ -13,9 +13,11 @@ from datetime import datetime
 from decimal import Decimal
 from enum import Enum
 from typing import Any
+from uuid import UUID
 
 from simulor.types.common import OrderSide, TimeInForce
 from simulor.types.instruments import Instrument
+from simulor.types.target import TargetSource
 
 __all__ = [
     "OrderType",
@@ -53,6 +55,8 @@ class OrderSpec:
         limit_price: Price for limit orders
         stop_price: Trigger price for stop orders
         reason: Optional description of why order was placed
+        target_id: Target the order was generated from, if any
+        source: Pipeline stage that produced the order, if any
         metadata: Optional additional data for tracking/debugging
     """
 
@@ -73,8 +77,12 @@ class OrderSpec:
     # Required if time_in_force is GTD (Good Till Date)
     expire_time: datetime | None = None
 
-    # Optional metadata
+    # Provenance
     reason: str | None = None
+    target_id: UUID | None = None  # Target this order was generated from
+    source: TargetSource | None = None  # Stage that produced the order
+
+    # Optional metadata
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:

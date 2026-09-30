@@ -1,6 +1,7 @@
 """Signal definitions for alpha models.
 
 Defines:
+- SignalDirection: Enumeration of forecast direction
 - SignalType: Enumeration of signal sources
 - Signal: Trading signal with strength and confidence
 """
@@ -16,7 +17,15 @@ from typing import Any
 
 from simulor.types import Instrument
 
-__all__ = ["SignalType", "Signal"]
+__all__ = ["SignalDirection", "SignalType", "Signal"]
+
+
+class SignalDirection(Enum):
+    """Direction of a forecast."""
+
+    LONG = "long"  # Expect the instrument to appreciate
+    SHORT = "short"  # Expect the instrument to depreciate
+    FLAT = "flat"  # No directional view
 
 
 class SignalType(Enum):
@@ -36,15 +45,24 @@ class SignalType(Enum):
 
 @dataclass(frozen=True)
 class Signal:
-    """Trading signal with strength and confidence.
+    """Trading signal describing forecast intent.
+
+    A signal states a view, not a position size. Converting views into
+    desired holdings is the responsibility of portfolio construction.
+
+    Signals are immutable, and several signals may exist for the same
+    instrument. The framework defines no aggregation rule for such
+    duplicates: combination policy belongs to portfolio construction or
+    later stages, not to this artifact.
 
     Attributes:
         instrument: Instrument this signal applies to
         timestamp: Time signal was generated
+        direction: Direction of the forecast
+        strength: Forecast magnitude from 0 (no conviction) to 1 (maximum conviction)
+        confidence: Reliability estimate from 0 (uncertain) to 1 (very confident)
         signal_type: Source/type of signal
         source_id: Specific strategy or model generating the signal
-        strength: Signal intensity from -1 (strong sell) to +1 (strong buy) 0 = neutral
-        confidence: Reliability estimate from 0 (uncertain) to 1 (very confident)
         horizon: Validity duration of the signal
         id: Unique identifier for the signal
         metadata: Additional signal information
@@ -54,7 +72,8 @@ class Signal:
     timestamp: datetime
 
     # The Core Alpha
-    strength: Decimal  # Normalized Forecast: -1.0 (Short) to +1.0 (Long)
+    direction: SignalDirection  # Forecast direction
+    strength: Decimal  # Normalized magnitude: 0.0 to 1.0
     confidence: Decimal  # Probability/Conviction: 0.0 to 1.0
 
     # Classification
@@ -71,27 +90,36 @@ class Signal:
 
     def __post_init__(self) -> None:
         """Validate signal data."""
-        if not (Decimal("-1") <= self.strength <= Decimal("1")):
-            raise ValueError(f"Strength must be in [-1, 1], got {self.strength}")
+        if not (Decimal("0") <= self.strength <= Decimal("1")):
+            raise ValueError(f"Strength must be in [0, 1], got {self.strength}")
         if not (Decimal("0") <= self.confidence <= Decimal("1")):
             raise ValueError(f"Confidence must be in [0, 1], got {self.confidence}")
 
     @property
+    def signed_strength(self) -> Decimal:
+        """Get strength carrying the sign implied by direction."""
+        if self.direction is SignalDirection.LONG:
+            return self.strength
+        if self.direction is SignalDirection.SHORT:
+            return -self.strength
+        return Decimal("0")
+
+    @property
     def is_buy(self) -> bool:
         """Check if signal is bullish."""
-        return self.strength > Decimal("0")
+        return self.direction is SignalDirection.LONG
 
     @property
     def is_sell(self) -> bool:
         """Check if signal is bearish."""
-        return self.strength < Decimal("0")
+        return self.direction is SignalDirection.SHORT
 
     @property
-    def is_neutral(self) -> bool:
-        """Check if signal is neutral."""
-        return self.strength == Decimal("0")
+    def is_flat(self) -> bool:
+        """Check if signal has no directional view."""
+        return self.direction is SignalDirection.FLAT
 
     @property
     def weighted_strength(self) -> Decimal:
-        """Get strength weighted by confidence."""
-        return self.strength * self.confidence
+        """Get signed strength weighted by confidence."""
+        return self.signed_strength * self.confidence
