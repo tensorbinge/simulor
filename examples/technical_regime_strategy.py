@@ -111,7 +111,9 @@ class RegimeMomentumBreakoutAlpha(AlphaModel):
                 Decimal("1"),
                 max(
                     Decimal("0.2"),
-                    Decimal("0.55") + min(momentum, Decimal("0.20")) + min(max(breakout, Decimal("0")), Decimal("0.10")),
+                    Decimal("0.55")
+                    + min(momentum, Decimal("0.20"))
+                    + min(max(breakout, Decimal("0")), Decimal("0.10")),
                 ),
             )
             signals[instrument] = Signal(
