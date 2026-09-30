@@ -113,12 +113,12 @@ The "brain" of the trading system, composed of pluggable components.
 -- **Components**:
     - **Strategy**: Configuration object that defines the capital allocation and pluggable components (universe, alpha, portfolio, risk, execution models). Strategies express **what they want to hold** via target positions; they never emit orders directly.
     - **UniverseSelectionModel**: Determines which symbols to trade at each point in time (static lists, dynamic filters, or custom logic).
-    - **AlphaModel**: Receives MarketEvent and generates trading signals (BUY/SELL/HOLD) for symbols in the active universe.
-    - **PortfolioConstructionModel**: Converts signals into target positions based on portfolio construction logic (equal weight, risk parity, etc.).
-    - **RiskModel**: Applies risk constraints to target positions (position limits, stop losses, leverage constraints).
-    - **ExecutionModel**: Converts target positions into OrderSpec to achieve desired portfolio state (immediate market orders, VWAP, TWAP, etc.).
+    - **AlphaModel**: Receives MarketEvent and generates `Signal` artifacts (direction, strength, confidence) for symbols in the active universe.
+    - **PortfolioConstructionModel**: Converts signals into `Target` artifacts describing desired holdings (quantities, weights, notionals, or flat), based on portfolio construction logic (equal weight, risk parity, etc.).
+    - **RiskModel**: Adjusts desired holdings (position limits, stop losses, leverage constraints). It may replace, remove, or add targets.
+    - **ExecutionModel**: Normalizes targets into executable quantity transitions and converts them into OrderSpec to achieve the desired portfolio state (immediate market orders, VWAP, TWAP, etc.).
 
-**Key Design**: Strategies emit **target positions** (desired portfolio state), not direct orders. The ExecutionModel is the only component that translates targets into OrderSpec, allowing the same strategy to use different execution approaches without any strategy code changes.
+**Key Design**: Strategies emit **Target artifacts** (desired portfolio state), not direct orders. Signal, Target, and OrderSpec are immutable, so each stage produces new artifacts instead of mutating upstream ones. The ExecutionModel is the only component that translates targets into OrderSpec, allowing the same strategy to use different execution approaches without any strategy code changes.
 
 ### 3.4. Execution Layer
 
@@ -179,10 +179,10 @@ A typical event loop for a single time step in a backtest proceeds as follows:
 3. **Subscription Filtering**: The **Subscription/Filter Layer** filters data based on active strategy subscriptions, delivering only requested symbols and resolutions.
 4. **MarketEvent Delivery**: The **Engine** receives filtered `MarketEvent` objects and routes them to subscribed strategies.
 5. **Universe Selection**: For each Strategy, the **Engine** calls `UniverseSelectionModel.select_universe()` to get the current trading universe (typically cached and updated on rebalance schedule).
-6. **Alpha Signal Generation**: The **Engine** calls `AlphaModel.generate_signals(event, universe)` to get trading signals for symbols in the universe.
-7. **Portfolio Construction**: The **Engine** calls `PortfolioConstructionModel.calculate_targets(signals, capital)` to convert signals into target positions.
-8. **Risk Management**: The **Engine** calls `RiskModel.apply_limits(targets, current_positions)` to apply risk constraints.
-9. **Order Generation**: The **Engine** calls `ExecutionModel.generate_orders(targets, current_positions)` to create OrderSpec.
+6. **Alpha Signal Generation**: The **Engine** calls `AlphaModel.generate_signals(event)` to get a `list[Signal]` for the instruments in the event.
+7. **Portfolio Construction**: The **Engine** calls `PortfolioConstructionModel.create_targets(signals)` to convert signals into a `list[Target]` of desired holdings.
+8. **Risk Management**: The **Engine** calls `RiskModel.adjust_targets(targets)` to apply risk constraints, which may replace, remove, or add targets.
+9. **Order Generation**: The **Engine** calls `ExecutionModel.generate_orders(targets)` to create OrderSpec from the target stream.
 10. **Order Execution**: The **Execution Layer's Order Manager** receives OrderSpec and validates them.
 11. **Fill Simulation**: The **Fill Model** evaluates OrderSpec against the current market data.
     - If the OrderSpec fills (or partially fills), the Fill Model generates a fill event containing the execution price and quantity.

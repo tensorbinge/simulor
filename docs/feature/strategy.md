@@ -218,10 +218,15 @@ Unified signal system supporting multiple signal sources:
 **Signal Structure**:
 Each signal contains:
 
-- **Strength**: Normalized value from -1.0 (strong sell) to +1.0 (strong buy)
+- **Direction**: Forecast direction, either long, short, or flat
+- **Strength**: Forecast magnitude from 0.0 (no conviction) to 1.0 (maximum conviction)
 - **Confidence**: Probability score from 0.0 to 1.0
 - **Timestamp**: Exact time of signal generation
 - **Metadata**: Additional context (model version, indicator parameters, feature importance)
+
+Signals are immutable artifacts. A model may emit several signals for the same
+instrument; aggregating them is the responsibility of portfolio construction,
+not of the framework.
 
 **Design Decision**: All signal types produce a standardized output format with normalized strength and confidence scores. This enables cross-signal comparison and combination.
 
